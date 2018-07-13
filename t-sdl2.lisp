@@ -12,6 +12,9 @@
    (rect :accessor sprite-rect :initform nil)))
 
 
+(defclass player (sprite)
+  ((speed :initarg :speed :accessor player-speed)))
+
 (defclass cell (sprite)
   ((type :initarg :t :accessor cell-t)
    (passable :initarg :passable? :accessor cell-passable? :initform nil)
@@ -72,7 +75,7 @@
 
 
 
-(defparameter *player* (make-instance 'sprite :x 15 :y 200 :w 30 :h 30 :picture "cobra.png"))
+(defparameter *player* (make-instance 'player :x 15 :y 200 :w 30 :h 30 :speed 8 :picture "cobra.png"))
 
 (defmethod load-texture (renderer (e sprite))
   (setf (sprite-image e)
@@ -107,6 +110,11 @@
 (defmethod load-texture (renderer filename)
   (sdl2:create-texture-from-surface renderer (sdl2-image:load-image filename)))
 
+(defmacro test-check(var-m then-m else-m)
+  `(if (some (lambda (x) (equal t x))
+	     (mapcar 'check-collision ,var-m))
+      ,then-m
+      ,else-m))
 
 (defun main(argv)
   (declare (ignore argv))
@@ -115,26 +123,33 @@
     (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
     (init-player renderer)
     (init-image-and-rect-in-map renderer)
-    (sdl2:with-event-loop (:method :poll)
-      (:quit () t)
-      (:keydown (:keysym keysym)
-		(case (sdl2:scancode keysym)
-		  (:scancode-up (if (check-collision)
-				    t
-				    (setf (sprite-y *player*) (- (sprite-y *player*) 10))))
-		  (:scancode-down (setf (sprite-y *player*) (+ (sprite-y *player*) 10)))
-		  (:scancode-left (setf (sprite-x *player*) (- (sprite-x *player*) 10)))
-		  (:scancode-right (setf (sprite-x *player*) (+ (sprite-x *player*) 10)))
-		  (t ()))
-		)
-      (:idle ()
-	     (setf (sprite-rect *player*) (make-rect *player*))
-	     (sdl2:render-clear renderer)
-	     (render-map renderer)
-	     (sdl2:render-copy renderer (sprite-image *player*) :dest-rect (sprite-rect *player*))
-	     (sdl2:render-present renderer)
-	     (sdl2:delay 10)
-	     ))))
+    (let ((unpass (make-list-unpassable-cell)))
+      (format t "GGGG ~A~%" unpass)
+      (sdl2:with-event-loop (:method :poll)
+	(:quit () t)
+	(:keydown (:keysym keysym)
+		  (case (sdl2:scancode keysym)
+		    (:scancode-up (test-check unpass
+					   (setf (sprite-y *player*)
+						 (+ (sprite-y *player*) (player-speed *player*)))
+					   (setf (sprite-y *player*)
+						 (- (sprite-y *player*) (player-speed *player*)))))
+		    (:scancode-down (setf (sprite-y *player*)
+					  (+ (sprite-y *player*) (player-speed *player*))))
+		    (:scancode-left (setf (sprite-x *player*)
+					  (- (sprite-x *player*) (player-speed *player*))))
+		    (:scancode-right (setf (sprite-x *player*)
+					   (+ (sprite-x *player*) (player-speed *player*))))
+		    (t ()))
+		  )
+	(:idle ()
+	       (setf (sprite-rect *player*) (make-rect *player*))
+	       (sdl2:render-clear renderer)
+	       (render-map renderer)
+	       (sdl2:render-copy renderer (sprite-image *player*) :dest-rect (sprite-rect *player*))
+	       (sdl2:render-present renderer)
+	       (sdl2:delay 10)
+	       )))))
 
 
 (defun render-map (renderer)
@@ -146,6 +161,7 @@
 	 (sprite-image (aref *map* i j))
 	 :dest-rect (make-rect (aref *map* i j))))
       )))
+
 
 
 (defun init-image-and-rect-in-map (renderer)
@@ -161,13 +177,14 @@
   (make-rect *player*))
 
 
-(defun check-collision ()
-  (sdl2:has-intersect (sprite-rect *player*) (sprite-rect (aref *map* 0 0))))
+(defun check-collision (rects)
+  (sdl2:has-intersect (sprite-rect *player*) rects))
 
 (defun make-list-unpassable-cell ()
   (let ((ret '()))
    (dotimes (i (car (array-dimensions *map*)))
     (dotimes (j (cadr (array-dimensions *map*)))
       (unless (cell-passable? (aref *map* i j))
-	(push (aref *map* i j) ret))
-      ))))
+	(push (sprite-rect (aref *map* i j)) ret))
+      ))
+    ret))
