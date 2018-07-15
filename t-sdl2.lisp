@@ -13,7 +13,27 @@
 
 
 (defclass player (sprite)
-  ((speed :initarg :speed :accessor player-speed)))
+  ((speed :initarg :speed :accessor player-speed)
+   (vel-x :initarg :vel-x :accessor player-vel-x :initform 0)
+   (vel-y :initarg :vel-y :accessor player-vel-y :initform 0)
+   (move-vel-x :accessor player-move-vel-x :initform 0)
+   (move-vel-y :accessor player-move-vel-y :initform 0)
+   (future :accessor player-future :initform nil)
+   (airborne :accessor player-airborne :initform t)
+   ))
+
+
+
+(defmethod sum-vel ((e player))
+  `(,(+ (player-vel-x e) (player-move-vel-x e))
+    ,(+ (player-vel-y e) (player-move-vel-y e)))
+  )
+
+(defmethod sum-vel-x ((e player))
+  (car (sum-vel e)))
+
+(defmethod sum-vel-y ((e player))
+  (cadr (sum-vel e)))
 
 (defclass cell (sprite)
   ((type :initarg :t :accessor cell-t)
@@ -75,7 +95,7 @@
 
 
 
-(defparameter *player* (make-instance 'player :x 15 :y 200 :w 30 :h 30 :speed 8 :picture "cobra.png"))
+(defparameter *player* (make-instance 'player :x 50 :y 200 :w 30 :h 30 :speed 8 :picture "cobra.png"))
 
 (defmethod load-texture (renderer (e sprite))
   (setf (sprite-image e)
@@ -83,11 +103,11 @@
 	 renderer
 	 (sdl2-image:load-image (sprite-picture e)))))
 
-(defmethod make-rect ((e sprite))
+(defmethod make-rect ((e sprite) &key (vel-x 0) (vel-y 0))
   (setf (sprite-rect e)
 	(sdl2:make-rect
-	 (sprite-x e)
-	 (sprite-y e)
+	 (+ (sprite-x e) vel-x)
+	 (+ (sprite-y e) vel-y)
 	 (sprite-w e)
 	 (sprite-h e))))
 
@@ -112,43 +132,47 @@
 
 (defmacro test-check(var-m then-m else-m)
   `(if (some (lambda (x) (equal t x))
-	     (mapcar 'check-collision ,var-m))
+	     (mapcar #'check-collision ,var-m))
       ,then-m
       ,else-m))
 
+
+(defun get-center (x y w h)
+  `(,(float (+ x (/ w 2)))
+    ,(float (+ y (/ h 2)))
+    ))
+
 (defun main(argv)
   (declare (ignore argv))
+  (map-mod-wall 0)
   (with-window-renderer (window renderer)
     (sdl2-image:init '(:png))
     (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
     (init-player renderer)
     (init-image-and-rect-in-map renderer)
     (let ((unpass (make-list-unpassable-cell)))
-      (format t "GGGG ~A~%" unpass)
+      ;(format t "GGGG ~A~%" unpass)
       (sdl2:with-event-loop (:method :poll)
 	(:quit () t)
 	(:keydown (:keysym keysym)
 		  (case (sdl2:scancode keysym)
-		    (:scancode-up (test-check unpass
-					   (setf (sprite-y *player*)
-						 (+ (sprite-y *player*) (player-speed *player*)))
-					   (setf (sprite-y *player*)
-						 (- (sprite-y *player*) (player-speed *player*)))))
-		    (:scancode-down (setf (sprite-y *player*)
-					  (+ (sprite-y *player*) (player-speed *player*))))
-		    (:scancode-left (setf (sprite-x *player*)
-					  (- (sprite-x *player*) (player-speed *player*))))
-		    (:scancode-right (setf (sprite-x *player*)
-					   (+ (sprite-x *player*) (player-speed *player*))))
+		    (:scancode-up t)
+		    (:scancode-down t)
+		    (:scancode-left (setf (player-vel-x *player*) (- (player-speed *player*))))
+		    (:scancode-right (setf (player-vel-x *player*)  (player-speed *player*)))
 		    (t ()))
+		  
 		  )
 	(:idle ()
-	       (setf (sprite-rect *player*) (make-rect *player*))
+	       ;(when (or (/= (sum-vel-x *player*) 0) (/= (sum-vel-y *player*) 0))
+	       (check-future unpass);)
+	       (when (player-future *player*)
+	       	 (setf (sprite-rect *player*) (player-future *player*)))
 	       (sdl2:render-clear renderer)
 	       (render-map renderer)
 	       (sdl2:render-copy renderer (sprite-image *player*) :dest-rect (sprite-rect *player*))
 	       (sdl2:render-present renderer)
-	       (sdl2:delay 10)
+	       (sdl2:delay 20)
 	       )))))
 
 
@@ -163,6 +187,21 @@
       )))
 
 
+(defun check-future (unpass)
+  (setf (player-future *player*)
+	(make-rect *player*
+		   :vel-x (sum-vel-x *player*)
+		   :vel-y (sum-vel-y *player*)))
+  (test-check unpass
+	      (setf (player-future *player*) nil)
+	      (progn
+		(setf (sprite-x *player*)
+		      (+ (sprite-x *player*) (sum-vel-x *player*)))
+		(setf (sprite-y *player*)
+		      (+ (sprite-y *player*) (sum-vel-y *player*)))))
+  (setf (player-vel-x *player*) 0)
+  (setf (player-vel-y *player*) 0)
+  )
 
 (defun init-image-and-rect-in-map (renderer)
   (dotimes (i (car (array-dimensions *map*)))
@@ -178,7 +217,7 @@
 
 
 (defun check-collision (rects)
-  (sdl2:has-intersect (sprite-rect *player*) rects))
+  (sdl2:has-intersect (player-future *player*) rects))
 
 (defun make-list-unpassable-cell ()
   (let ((ret '()))
@@ -188,3 +227,10 @@
 	(push (sprite-rect (aref *map* i j)) ret))
       ))
     ret))
+
+(defun map-mod-wall (y)
+  (dotimes (i (car (array-dimensions *map*)))
+    (when (cell-passable? (aref *map* i y))
+      (setf (cell-passable? (aref *map* i y)) nil)
+      (setf (cell-visible? (aref *map* i y)) t)
+      )))
