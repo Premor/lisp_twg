@@ -8,6 +8,7 @@
    (y :initarg :y :accessor sprite-y)
    (w :initarg :w :accessor sprite-w)
    (h :initarg :h :accessor sprite-h)
+   (center :initarg :center :accessor sprite-center :initform '(0 0))
    (image :accessor sprite-image :initform nil)
    (rect :accessor sprite-rect :initform nil)))
 
@@ -23,6 +24,11 @@
    ))
 
 
+
+(defun get-center (x y w h)
+  `(,(float (+ x (/ w 2)))
+    ,(float (+ y (/ h 2)))
+    ))
 
 (defmethod sum-vel ((e player))
   `(,(+ (player-vel-x e) (player-move-vel-x e))
@@ -43,11 +49,11 @@
 
 
 
-(defparameter *screen-width* 640)
-(defparameter *screen-height* 480)
+(defparameter *screen-width* 800)
+(defparameter *screen-height* 600)
 (defparameter *cell-w* (/ *screen-width* 20));делаем ячейки такими
 (defparameter *cell-h* (/ *screen-height* 20));чтобы карта была 20х20
-
+(defparameter *g* 5)
 
 
 
@@ -61,6 +67,7 @@
 			 :picture "rock.png"
 			 :w *cell-w*
 			 :h *cell-h*
+			 :center (get-center (* i *cell-w*) y *cell-w* *cell-h*)
 			 :passable? passable
 			 :visible? visible)
 	  ret)
@@ -95,7 +102,7 @@
 
 
 
-(defparameter *player* (make-instance 'player :x 50 :y 200 :w 30 :h 30 :speed 8 :picture "cobra.png"))
+(defparameter *player* (make-instance 'player :x 50 :y 100 :w 30 :h 50 :speed 8 :picture "cobra.png"))
 
 (defmethod load-texture (renderer (e sprite))
   (setf (sprite-image e)
@@ -137,10 +144,11 @@
       ,else-m))
 
 
-(defun get-center (x y w h)
-  `(,(float (+ x (/ w 2)))
-    ,(float (+ y (/ h 2)))
-    ))
+
+
+(defmethod get-center-s ((e sprite))
+  `(,(float (+ (sprite-x e) (/ (sprite-w e) 2)))
+    ,(float (+ (sprite-y e) (/ (sprite-h e) 2)))))
 
 (defun main(argv)
   (declare (ignore argv))
@@ -156,7 +164,14 @@
 	(:quit () t)
 	(:keydown (:keysym keysym)
 		  (case (sdl2:scancode keysym)
-		    (:scancode-up t)
+		    (:scancode-space (if(= *g* 1)
+					(progn
+					  (setf *g* 0)
+					  (setf (player-vel-y *player*) 0))
+					(setf *g* 1)))
+		    (:scancode-up (progn
+				    (setf (player-airborne *player*) t)
+				    (setf (player-vel-y *player*) (- 10))))
 		    (:scancode-down t)
 		    (:scancode-left (setf (player-vel-x *player*) (- (player-speed *player*))))
 		    (:scancode-right (setf (player-vel-x *player*)  (player-speed *player*)))
@@ -164,8 +179,18 @@
 		  
 		  )
 	(:idle ()
+	       ;; (when (player-airborne *player*)
+	       ;; 	 (when (< (player-move-vel-y *player*) *g*)
+	       ;; 	   (setf (player-move-vel-y *player*) *g*)))
+	       
 	       ;(when (or (/= (sum-vel-x *player*) 0) (/= (sum-vel-y *player*) 0))
 	       (check-future unpass);)
+	       ;; (unless (player-airborne *player*)
+	       ;; 	 (unless (/= (player-move-vel-y *player*) 0)
+	       ;; 	   (progn
+	       ;; 	     (format t "GROUND ~A ~A~%" (player-vel-y *player*) (player-move-vel-y *player*))
+	       ;; 	     (setf (player-move-vel-y *player*) 0))))
+	       
 	       (when (player-future *player*)
 	       	 (setf (sprite-rect *player*) (player-future *player*)))
 	       (sdl2:render-clear renderer)
@@ -188,19 +213,46 @@
 
 
 (defun check-future (unpass)
-  (setf (player-future *player*)
-	(make-rect *player*
-		   :vel-x (sum-vel-x *player*)
-		   :vel-y (sum-vel-y *player*)))
-  (test-check unpass
-	      (setf (player-future *player*) nil)
-	      (progn
-		(setf (sprite-x *player*)
-		      (+ (sprite-x *player*) (sum-vel-x *player*)))
-		(setf (sprite-y *player*)
-		      (+ (sprite-y *player*) (sum-vel-y *player*)))))
-  (setf (player-vel-x *player*) 0)
-  (setf (player-vel-y *player*) 0)
+  (let* ((colis-t nil)
+	(pl-center (get-center-s *player*))
+	(ground (remove-if
+		   (lambda (x)(<= (cadr (sprite-center x)) (+ (cadr pl-center) (/ (sprite-h *player*) 2))))
+		   unpass))
+	(not-ground (remove-if-not
+		   (lambda (x)(<= (cadr (sprite-center x)) (+ (cadr pl-center) (/ (sprite-h *player*) 2))))
+		   unpass)))
+    (setf (player-future *player*)
+	  (make-rect *player*
+		     :vel-x (sum-vel-x *player*)
+		     :vel-y (sum-vel-y *player*)))
+    (let ((check-g (remove-if-not (lambda (x) (check-collision x)) ground)))
+      (if check-g
+	  (progn
+	    (setf colis-t t)
+	    (setf (sprite-y *player*) (- (sprite-y (car check-g)) (sprite-h *player*) 0))
+	    (setf (sprite-rect *player*) (make-rect *player*))
+	    (format t "DNO ~A~%" (mapcar (lambda (x) (sprite-rect x)) check-g))
+	    (setf (player-airborne *player*) nil))
+	  t)
+    )
+    (test-check not-ground
+		(setf colis-t t)
+		t)
+    (if colis-t
+	(setf (player-future *player*) nil)
+	(progn
+	  (setf (sprite-x *player*)
+		(+ (sprite-x *player*) (sum-vel-x *player*)))
+	  (setf (sprite-y *player*)
+		(+ (sprite-y *player*) (sum-vel-y *player*))))
+	)
+    
+    (unless (player-airborne *player*)(setf (player-vel-x *player*) 0))
+    (if (and (player-airborne *player*)(< (player-vel-y *player*) *g*))
+	(setf (player-vel-y *player*) (+ (player-vel-y *player*) *g*))
+	(progn
+	  (setf (player-move-vel-y *player*) 0)
+	  (setf (player-vel-y *player*) 0))))
   )
 
 (defun init-image-and-rect-in-map (renderer)
@@ -216,15 +268,15 @@
   (make-rect *player*))
 
 
-(defun check-collision (rects)
-  (sdl2:has-intersect (player-future *player*) rects))
+(defun check-collision (rect)
+  (sdl2:has-intersect (player-future *player*) (sprite-rect rect)))
 
 (defun make-list-unpassable-cell ()
   (let ((ret '()))
    (dotimes (i (car (array-dimensions *map*)))
     (dotimes (j (cadr (array-dimensions *map*)))
       (unless (cell-passable? (aref *map* i j))
-	(push (sprite-rect (aref *map* i j)) ret))
+	(push (aref *map* i j) ret))
       ))
     ret))
 
