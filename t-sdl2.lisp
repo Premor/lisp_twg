@@ -144,61 +144,14 @@
       ,else-m))
 
 
-
+(defun check-collision (rect)
+  (sdl2:has-intersect (player-future *player*) (sprite-rect rect)))
 
 (defmethod get-center-s ((e sprite))
   `(,(float (+ (sprite-x e) (/ (sprite-w e) 2)))
     ,(float (+ (sprite-y e) (/ (sprite-h e) 2)))))
 
-(defun main(argv)
-  (declare (ignore argv))
-  (map-mod-wall 0)
-  (with-window-renderer (window renderer)
-    (sdl2-image:init '(:png))
-    (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
-    (init-player renderer)
-    (init-image-and-rect-in-map renderer)
-    (let ((unpass (make-list-unpassable-cell)))
-      ;(format t "GGGG ~A~%" unpass)
-      (sdl2:with-event-loop (:method :poll)
-	(:quit () t)
-	(:keydown (:keysym keysym)
-		  (case (sdl2:scancode keysym)
-		    (:scancode-space (if(= *g* 1)
-					(progn
-					  (setf *g* 0)
-					  (setf (player-vel-y *player*) 0))
-					(setf *g* 1)))
-		    (:scancode-up (progn
-				    (setf (player-airborne *player*) t)
-				    (setf (player-vel-y *player*) (- 10))))
-		    (:scancode-down t)
-		    (:scancode-left (setf (player-vel-x *player*) (- (player-speed *player*))))
-		    (:scancode-right (setf (player-vel-x *player*)  (player-speed *player*)))
-		    (t ()))
-		  
-		  )
-	(:idle ()
-	       ;; (when (player-airborne *player*)
-	       ;; 	 (when (< (player-move-vel-y *player*) *g*)
-	       ;; 	   (setf (player-move-vel-y *player*) *g*)))
-	       
-	       ;(when (or (/= (sum-vel-x *player*) 0) (/= (sum-vel-y *player*) 0))
-	       (check-future unpass);)
-	       ;; (unless (player-airborne *player*)
-	       ;; 	 (unless (/= (player-move-vel-y *player*) 0)
-	       ;; 	   (progn
-	       ;; 	     (format t "GROUND ~A ~A~%" (player-vel-y *player*) (player-move-vel-y *player*))
-	       ;; 	     (setf (player-move-vel-y *player*) 0))))
-	       
-	       (when (player-future *player*)
-	       	 (setf (sprite-rect *player*) (player-future *player*)))
-	       (sdl2:render-clear renderer)
-	       (render-map renderer)
-	       (sdl2:render-copy renderer (sprite-image *player*) :dest-rect (sprite-rect *player*))
-	       (sdl2:render-present renderer)
-	       (sdl2:delay 20)
-	       )))))
+
 
 
 (defun render-map (renderer)
@@ -208,7 +161,7 @@
 	(sdl2:render-copy
 	 renderer
 	 (sprite-image (aref *map* i j))
-	 :dest-rect (make-rect (aref *map* i j))))
+	 :dest-rect (sprite-rect (aref *map* i j))))
       )))
 
 
@@ -247,8 +200,8 @@
 		(+ (sprite-y *player*) (sum-vel-y *player*))))
 	)
     
-    (unless (player-airborne *player*)(setf (player-vel-x *player*) 0))
-    (if (and (player-airborne *player*)(< (player-vel-y *player*) *g*))
+    ;; (unless (player-airborne *player*)(setf (player-vel-x *player*) 0))
+    (if (player-airborne *player*)
 	(setf (player-vel-y *player*) (+ (player-vel-y *player*) *g*))
 	(progn
 	  (setf (player-move-vel-y *player*) 0)
@@ -268,8 +221,7 @@
   (make-rect *player*))
 
 
-(defun check-collision (rect)
-  (sdl2:has-intersect (player-future *player*) (sprite-rect rect)))
+
 
 (defun make-list-unpassable-cell ()
   (let ((ret '()))
@@ -286,3 +238,65 @@
       (setf (cell-passable? (aref *map* i y)) nil)
       (setf (cell-visible? (aref *map* i y)) t)
       )))
+
+(defun map-mod-floor-with-whole (x y-whole w-whole)
+  (dotimes (j (cadr (array-dimensions *map*)))
+    (unless (and (>= j y-whole) (< j (+ y-whole w-whole)))
+      (when (cell-passable? (aref *map* x j))
+	(setf (cell-passable? (aref *map* x j)) nil)
+	(setf (cell-visible? (aref *map* x j)) t)
+	))))
+
+
+
+(defun main(argv)
+  (declare (ignore argv))
+  (map-mod-wall 0)
+  (map-mod-floor-with-whole 6 10 3)
+  (with-window-renderer (window renderer)
+    (sdl2-image:init '(:png))
+    (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
+    (init-player renderer)
+    (init-image-and-rect-in-map renderer)
+    (let ((unpass (make-list-unpassable-cell)))
+      (sdl2:with-event-loop (:method :poll)
+	(:quit () t)
+	(:keydown (:keysym keysym)
+		  (case (sdl2:scancode keysym)
+		    (:scancode-space
+		     (if(= *g* 1)
+			(progn
+			  (setf *g* 0)
+			  (setf (player-vel-y *player*) 0))
+			(setf *g* 1)))
+		    (:scancode-up 
+		     (progn
+		       (setf (player-airborne *player*) t)
+		       (setf (player-vel-y *player*) (- 35))))
+		    (:scancode-down t)
+		    (:scancode-left 
+		     (setf (player-vel-x *player*) (- (player-speed *player*))))
+		  (:scancode-right
+		   (setf (player-vel-x *player*)  (player-speed *player*)))
+		  (t ()))
+		  
+		  )
+	(:keyup (:keysym keysym)
+		(case (sdl2:scancode keysym)
+		  (:scancode-left
+		   (when (minusp (player-vel-x *player*))(setf (player-vel-x *player*) 0)))
+		  (:scancode-right
+		   (when (plusp (player-vel-x *player*))(setf (player-vel-x *player*) 0)))
+		  (t ())
+		  ))
+	(:idle ()
+	       (check-future unpass);)
+	       
+	       (when (player-future *player*)
+	       	 (setf (sprite-rect *player*) (player-future *player*)))
+	       (sdl2:render-clear renderer)
+	       (render-map renderer)
+	       (sdl2:render-copy renderer (sprite-image *player*) :source-rect (sdl2:make-rect 10 10 10 10) :dest-rect (sprite-rect *player*))
+	       (sdl2:render-present renderer)
+	       (sdl2:delay 20)
+	       )))))
