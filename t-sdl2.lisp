@@ -147,6 +147,9 @@
 (defun check-collision (rect)
   (sdl2:has-intersect (player-future *player*) (sprite-rect rect)))
 
+(defun check-collision-r (src-rect dest-rect)
+  (sdl2:has-intersect src-rect (sprite-rect dest-rect)))
+
 (defmethod get-center-s ((e sprite))
   `(,(float (+ (sprite-x e) (/ (sprite-w e) 2)))
     ,(float (+ (sprite-y e) (/ (sprite-h e) 2)))))
@@ -164,6 +167,24 @@
 	 :dest-rect (sprite-rect (aref *map* i j))))
       )))
 
+
+
+(defun check-ground (unpass)
+  (let* ((ground-rect (sdl2:make-rect (sprite-x *player*)
+				      (+ (sprite-y *player*) (sprite-h *player*))
+				      (sprite-w *player*)
+				      1))
+	 (pl-center (get-center-s *player*))
+	 (ground (remove-if
+		  (lambda (x)(<= (cadr (sprite-center x))
+				 (+ (cadr pl-center) (/ (sprite-h *player*) 2))))
+		  unpass)))
+    (let ((check-g (remove-if-not (lambda (x) (check-collision-r ground-rect x)) ground)))
+      (if check-g
+	  t
+	  nil)
+    )
+    ))
 
 (defun check-future (unpass)
   (let* ((colis-t nil)
@@ -184,7 +205,7 @@
 	    (setf colis-t t)
 	    (setf (sprite-y *player*) (- (sprite-y (car check-g)) (sprite-h *player*) 0))
 	    (setf (sprite-rect *player*) (make-rect *player*))
-	    (format t "DNO ~A~%" (mapcar (lambda (x) (sprite-rect x)) check-g))
+	    ;(format t "DNO ~A~%" (mapcar (lambda (x) (sprite-rect x)) check-g))
 	    (setf (player-airborne *player*) nil))
 	  t)
     )
@@ -264,11 +285,13 @@
 	(:keydown (:keysym keysym)
 		  (case (sdl2:scancode keysym)
 		    (:scancode-space
-		     (if(= *g* 1)
-			(progn
-			  (setf *g* 0)
-			  (setf (player-vel-y *player*) 0))
-			(setf *g* 1)))
+		     ;; (if(= *g* 1)
+		     ;; 	(progn
+		     ;; 	  (setf *g* 0)
+		     ;; 	  (setf (player-vel-y *player*) 0))
+		     ;; 	(setf *g* 1))
+		     (check-ground unpass)
+		     )
 		    (:scancode-up 
 		     (progn
 		       (setf (player-airborne *player*) t)
@@ -290,6 +313,8 @@
 		  (t ())
 		  ))
 	(:idle ()
+	       (unless (check-ground unpass)
+		 (setf (player-airborne *player*) t))
 	       (check-future unpass);)
 	       
 	       (when (player-future *player*)
