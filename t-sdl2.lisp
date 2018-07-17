@@ -1,5 +1,6 @@
 (ql:quickload "sdl2")
 (ql:quickload "sdl2-image")
+(ql:quickload "sdl2-ttf")
 
 
 (defclass sprite ()
@@ -9,8 +10,9 @@
    (w :initarg :w :accessor sprite-w)
    (h :initarg :h :accessor sprite-h)
    (center :initarg :center :accessor sprite-center :initform '(0 0))
-   (image :accessor sprite-image :initform nil)
-   (rect :accessor sprite-rect :initform nil)))
+   (image :accessor sprite-image :initform nil :initarg :image)
+   (rect :accessor sprite-rect :initform nil)
+   (visible :initarg :visible? :accessor sprite-visible? :initform t)))
 
 
 (defclass player (sprite)
@@ -21,7 +23,55 @@
    (move-vel-y :accessor player-move-vel-y :initform 0)
    (future :accessor player-future :initform nil)
    (airborne :accessor player-airborne :initform t)
+   (animation :initarg :animation :accessor player-animation)
+   (number :initarg :number :accessor player-number)
    ))
+
+(defclass game-event (sprite)
+  ((type :initform nil :accessor game-event-type)
+  (on-colision :initarg :colision :accessor game-event-on-colision)
+  (on-use :initarg :use :accessor game-event-on-use))
+  )
+
+
+(defparameter *font* nil)
+
+;; (defclass tex ()
+;;   ((w
+;;     :accessor tex-w
+;;     :initform 0 )
+;;    (h
+;;     :accessor tex-h
+;;     :initform 0)
+;;    (image
+;;     :accessor tex-texture
+;;     :initform nil)))
+
+(defun load-texture-from-text (renderer text)
+  (let ((surface (sdl2-ttf:render-text-solid *font* text 0 0 0 0)))
+    (let ((tex (make-instance 'sprite
+			      :h (sdl2:surface-height surface)
+			      :w (sdl2:surface-width surface)
+			      :x 100
+			      :y 100
+			      :image (sdl2:create-texture-from-surface renderer surface))))
+      
+      
+      
+      tex)))
+
+(defmethod render-text ((e sprite) renderer &key clip angle center flip)
+  (sdl2:render-copy-ex renderer
+		       (sprite-image e)
+		       :source-rect clip
+		       :dest-rect (sdl2:make-rect (sprite-x e)
+						  (sprite-y e)
+						  (if clip (sdl2:rect-width clip) (sprite-w e))
+						  (if clip (sdl2:rect-height clip) (sprite-h e)))
+		       :angle angle
+		       :center center
+		       :flip (list flip)))
+
 
 
 
@@ -44,7 +94,7 @@
 (defclass cell (sprite)
   ((type :initarg :t :accessor cell-t)
    (passable :initarg :passable? :accessor cell-passable? :initform nil)
-   (visible :initarg :visible? :accessor cell-visible? :initform t)))
+   (event :initarg :event :accessor cell-event :initform nil)))
 
 
 
@@ -100,9 +150,54 @@
 
 (defparameter *map* (make-array '(20 20) :initial-contents (some-strange-shit 20)))
 
+(defparameter *events* (vector (make-instance 'game-event
+				      :picture "terminal.png"
+				      :x (sprite-x (aref *map* 6 15))
+				      :y (sprite-y (aref *map* 6 15))
+				      :h (* 2 (sprite-h (aref *map* 5 15)))
+				      :w (sprite-w (aref *map* 5 15)))))
 
+(defparameter *texts* '())
+(defparameter *playable* (vector (make-instance 'player
+						:x 50
+						:y 100
+						:w 30
+						:h 50
+						:speed 8
+						:picture "man.png"
+						:number 0
+						:animation (vector (sdl2:make-rect 1229 411 136 407)
+								   (sdl2:make-rect 874 403 179 408)
+								   (sdl2:make-rect 249 403 223 406)
+								   (sdl2:make-rect 1 1 263 400)
+								   (sdl2:make-rect 1402 1 119 406)
+								   (sdl2:make-rect 1367 411 134 408)
+								   (sdl2:make-rect 1055 403 172 408)
+								   (sdl2:make-rect 474 403 210 405)
+								   (sdl2:make-rect 1 403 246 401)
+								   (sdl2:make-rect 1229 1 171 408)
+								   (sdl2:make-rect 1503 409 102 407)))
+				 (make-instance 'player
+						:x 150
+						:y 100
+						:w 30
+						:h 50
+						:number 1
+						:speed 8
+						:picture "man.png"
+						:animation (vector (sdl2:make-rect 1229 411 136 407)
+								   (sdl2:make-rect 874 403 179 408)
+								   (sdl2:make-rect 249 403 223 406)
+								   (sdl2:make-rect 1 1 263 400)
+								   (sdl2:make-rect 1402 1 119 406)
+								   (sdl2:make-rect 1367 411 134 408)
+								   (sdl2:make-rect 1055 403 172 408)
+								   (sdl2:make-rect 474 403 210 405)
+								   (sdl2:make-rect 1 403 246 401)
+								   (sdl2:make-rect 1229 1 171 408)
+								   (sdl2:make-rect 1503 409 102 407)))))
 
-(defparameter *player* (make-instance 'player :x 50 :y 100 :w 30 :h 50 :speed 8 :picture "cobra.png"))
+(defparameter *player* (svref *playable* 0))
 
 (defmethod load-texture (renderer (e sprite))
   (setf (sprite-image e)
@@ -160,7 +255,7 @@
 (defun render-map (renderer)
   (dotimes (i (car (array-dimensions *map*)))
     (dotimes (j (cadr (array-dimensions *map*)))
-      (when (cell-visible? (aref *map* i j))
+      (when (sprite-visible? (aref *map* i j))
 	(sdl2:render-copy
 	 renderer
 	 (sprite-image (aref *map* i j))
@@ -185,6 +280,14 @@
 	  nil)
     )
     ))
+
+(defun render-event (renderer)
+  (dotimes (i (length *events*))
+    (when (sprite-visible? (svref *events* i))
+	(sdl2:render-copy
+	 renderer
+	 (sprite-image (svref *events* i))
+	 :dest-rect (sprite-rect (svref *events* i))))))
 
 (defun check-future (unpass)
   (let* ((colis-t nil)
@@ -242,7 +345,10 @@
   (make-rect *player*))
 
 
-
+(defun init-events (renderer)
+  (dotimes (i (length *events*))
+    (load-texture renderer (svref *events* i))
+    (make-rect (svref *events* i))))
 
 (defun make-list-unpassable-cell ()
   (let ((ret '()))
@@ -257,7 +363,7 @@
   (dotimes (i (car (array-dimensions *map*)))
     (when (cell-passable? (aref *map* i y))
       (setf (cell-passable? (aref *map* i y)) nil)
-      (setf (cell-visible? (aref *map* i y)) t)
+      (setf (sprite-visible? (aref *map* i y)) t)
       )))
 
 (defun map-mod-floor-with-whole (x y-whole w-whole)
@@ -265,7 +371,7 @@
     (unless (and (>= j y-whole) (< j (+ y-whole w-whole)))
       (when (cell-passable? (aref *map* x j))
 	(setf (cell-passable? (aref *map* x j)) nil)
-	(setf (cell-visible? (aref *map* x j)) t)
+	(setf (sprite-visible? (aref *map* x j)) t)
 	))))
 
 
@@ -273,29 +379,43 @@
 (defun main(argv)
   (declare (ignore argv))
   (map-mod-wall 0)
-  (map-mod-floor-with-whole 6 10 3)
+  (map-mod-floor-with-whole 4 10 3)
   (with-window-renderer (window renderer)
     (sdl2-image:init '(:png))
+    (sdl2-ttf:init)
     (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
     (init-player renderer)
+    (init-events renderer)
     (init-image-and-rect-in-map renderer)
-    (let ((unpass (make-list-unpassable-cell)))
+    (setf *font* (sdl2-ttf:open-font "GOST.ttf" 28))
+    (let ((unpass (make-list-unpassable-cell))
+	  (animation-n 0)
+	  (frame 0)
+	  (ground-animation nil)
+	  (text-test (load-texture-from-text renderer "WHAT DOES THE FOX SAY???"))
+	  )
       (sdl2:with-event-loop (:method :poll)
 	(:quit () t)
 	(:keydown (:keysym keysym)
 		  (case (sdl2:scancode keysym)
+		    (:scancode-e
+		     (render text-test
+			     renderer
+			     :x 100
+			     :y 100))
 		    (:scancode-space
-		     ;; (if(= *g* 1)
-		     ;; 	(progn
-		     ;; 	  (setf *g* 0)
-		     ;; 	  (setf (player-vel-y *player*) 0))
-		     ;; 	(setf *g* 1))
-		     (check-ground unpass)
+		     (if (>= (player-number *player*) (1- (length *playable*)))
+			 (setf *player* (svref *playable* 0))
+			 (progn
+			   (format t "PL N ~A~%LENGTH ~A~%" (player-number *player*) (length *playable*))
+			   (setf *player* (svref *playable* (1+ (player-number *player*))))
+			   (init-player renderer)))
 		     )
 		    (:scancode-up 
-		     (progn
+		     (unless (player-airborne *player*)
+		       (progn
 		       (setf (player-airborne *player*) t)
-		       (setf (player-vel-y *player*) (- 35))))
+		       (setf (player-vel-y *player*) (- 35)))))
 		    (:scancode-down t)
 		    (:scancode-left 
 		     (setf (player-vel-x *player*) (- (player-speed *player*))))
@@ -313,6 +433,8 @@
 		  (t ())
 		  ))
 	(:idle ()
+	       (setf frame (1+ frame))
+	       ;(setf animation-n (1+ animation-n))
 	       (unless (check-ground unpass)
 		 (setf (player-airborne *player*) t))
 	       (check-future unpass);)
@@ -321,7 +443,30 @@
 	       	 (setf (sprite-rect *player*) (player-future *player*)))
 	       (sdl2:render-clear renderer)
 	       (render-map renderer)
-	       (sdl2:render-copy renderer (sprite-image *player*) :source-rect (sdl2:make-rect 10 10 10 10) :dest-rect (sprite-rect *player*))
+	       (render-event renderer)
+	       (unless (or (player-airborne *player*) (= (sum-vel-x *player*) 0))
+		 (setf ground-animation t))
+	       (if ground-animation
+		   (progn
+		     (sdl2:render-copy renderer
+				       (sprite-image *player*)
+				       :source-rect (svref (player-animation *player*) animation-n)
+				       :dest-rect (sprite-rect *player*))
+		     (when (>= frame 4)
+		       (setf frame 0)
+		       (if (>= animation-n (1- (length (player-animation *player*))))
+			   (setf animation-n 0)
+			   (setf animation-n (1+ animation-n))))
+		     )
+		   (progn
+		     (setf animation-n 0)
+		     (sdl2:render-copy renderer
+				       (sprite-image *player*)
+				       :source-rect (svref (player-animation *player*) animation-n)
+				       :dest-rect (sprite-rect *player*))))
+	       
 	       (sdl2:render-present renderer)
 	       (sdl2:delay 20)
-	       )))))
+	       )))
+    (sdl2-ttf:quit)
+    (sdl2-image:quit)))
