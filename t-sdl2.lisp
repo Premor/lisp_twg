@@ -1,6 +1,6 @@
 (ql:quickload "sdl2")
 (ql:quickload "sdl2-image")
-(ql:quickload "sdl2-ttf")
+;(ql:quickload "sdl2-ttf")
 
 
 (defclass sprite ()
@@ -47,30 +47,30 @@
 ;;     :accessor tex-texture
 ;;     :initform nil)))
 
-(defun load-texture-from-text (renderer text)
-  (let ((surface (sdl2-ttf:render-text-solid *font* text 0 0 0 0)))
-    (let ((tex (make-instance 'sprite
-			      :h (sdl2:surface-height surface)
-			      :w (sdl2:surface-width surface)
-			      :x 100
-			      :y 100
-			      :image (sdl2:create-texture-from-surface renderer surface))))
+;; (defun load-texture-from-text (renderer text)
+;;   (let ((surface (sdl2-ttf:render-text-solid *font* text 0 0 0 0)))
+;;     (let ((tex (make-instance 'sprite
+;; 			      :h (sdl2:surface-height surface)
+;; 			      :w (sdl2:surface-width surface)
+;; 			      :x 100
+;; 			      :y 100
+;; 			      :image (sdl2:create-texture-from-surface renderer surface))))
       
       
       
-      tex)))
+;;       tex)))
 
-(defmethod render-text ((e sprite) renderer &key clip angle center flip)
-  (sdl2:render-copy-ex renderer
-		       (sprite-image e)
-		       :source-rect clip
-		       :dest-rect (sdl2:make-rect (sprite-x e)
-						  (sprite-y e)
-						  (if clip (sdl2:rect-width clip) (sprite-w e))
-						  (if clip (sdl2:rect-height clip) (sprite-h e)))
-		       :angle angle
-		       :center center
-		       :flip (list flip)))
+;; (defmethod render-text ((e sprite) renderer &key clip angle center flip)
+;;   (sdl2:render-copy-ex renderer
+;; 		       (sprite-image e)
+;; 		       :source-rect clip
+;; 		       :dest-rect (sdl2:make-rect (sprite-x e)
+;; 						  (sprite-y e)
+;; 						  (if clip (sdl2:rect-width clip) (sprite-w e))
+;; 						  (if clip (sdl2:rect-height clip) (sprite-h e)))
+;; 		       :angle angle
+;; 		       :center center
+;; 		       :flip (list flip)))
 
 
 
@@ -157,7 +157,7 @@
 				      :h (* 2 (sprite-h (aref *map* 5 15)))
 				      :w (sprite-w (aref *map* 5 15)))))
 
-(defparameter *texts* '())
+;(defparameter *texts* '())
 (defparameter *playable* (vector (make-instance 'player
 						:x 50
 						:y 100
@@ -382,27 +382,28 @@
   (map-mod-floor-with-whole 4 10 3)
   (with-window-renderer (window renderer)
     (sdl2-image:init '(:png))
-    (sdl2-ttf:init)
+;;    (sdl2-ttf:init)
     (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
     (init-player renderer)
     (init-events renderer)
     (init-image-and-rect-in-map renderer)
-    (setf *font* (sdl2-ttf:open-font "GOST.ttf" 28))
+    ;;(setf *font* (sdl2-ttf:open-font "GOST.ttf" 28))
     (let ((unpass (make-list-unpassable-cell))
 	  (animation-n 0)
 	  (frame 0)
 	  (ground-animation nil)
-	  (text-test (load-texture-from-text renderer "WHAT DOES THE FOX SAY???"))
+	  ;;(text-test (load-texture-from-text renderer "WHAT DOES THE FOX SAY???"))
 	  )
       (sdl2:with-event-loop (:method :poll)
 	(:quit () t)
 	(:keydown (:keysym keysym)
 		  (case (sdl2:scancode keysym)
 		    (:scancode-e
-		     (render text-test
-			     renderer
-			     :x 100
-			     :y 100))
+		     ;; (render text-test
+		     ;; 	     renderer
+		     ;; 	     :x 100
+		     ;; 	     :y 100)
+		     )
 		    (:scancode-space
 		     (if (>= (player-number *player*) (1- (length *playable*)))
 			 (setf *player* (svref *playable* 0))
