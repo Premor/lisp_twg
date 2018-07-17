@@ -469,5 +469,5 @@
 	       (sdl2:render-present renderer)
 	       (sdl2:delay 20)
 	       )))
-    (sdl2-ttf:quit)
+    ;(sdl2-ttf:quit)
     (sdl2-image:quit)))
